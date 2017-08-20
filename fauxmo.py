@@ -35,7 +35,7 @@ import sys
 import time
 import urllib
 import uuid
-
+import subprocess
 
 
 # This XML is the minimum needed to define one of our virtual switches
@@ -238,6 +238,7 @@ class fauxmo(upnp_device):
                 # on
                 dbg("Responding to ON for %s" % self.name)
                 success = self.action_handler.on()
+                dbg("Sending status: " + str(success))
             elif data.find('<BinaryState>0</BinaryState>') != -1:
                 # off
                 dbg("Responding to OFF for %s" % self.name)
@@ -371,6 +372,29 @@ class rest_api_handler(object):
     def off(self):
         r = requests.get(self.off_cmd)
         return r.status_code == 200
+        
+class onkyo_command_handler(object):
+    def __init__(self, device):
+        self.device = device
+        self.onkyo_command_path = '/home/pi/onkyo-remote/onkyo-iscp/onkyo-iscp'
+        self.onkyo_ip = '10.0.0.29'
+        
+    def on(self):
+        status = 0
+        if self.device == "Playstation":
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "10"])
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "0F"])
+        elif self.device == "X1":
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "01"])
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "0F"])
+        elif self.device == "turntable":
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "23"])
+            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "1E"])
+        return True
+
+    def off(self):
+        status = subprocess.call([self.onkyo_command_path, self.onkyo_ip, "PWR", "00"])
+        return True
 
 
 # Each entry is a list with the following elements:
@@ -384,8 +408,9 @@ class rest_api_handler(object):
 # list will be used.
 
 FAUXMOS = [
-    ['office lights', rest_api_handler('http://192.168.5.4/ha-api?cmd=on&a=office', 'http://192.168.5.4/ha-api?cmd=off&a=office')],
-    ['kitchen lights', rest_api_handler('http://192.168.5.4/ha-api?cmd=on&a=kitchen', 'http://192.168.5.4/ha-api?cmd=off&a=kitchen')],
+    ['playstation', onkyo_command_handler("Playstation"), 9091],
+    ['x1', onkyo_command_handler("X1"), 9092],
+    ['turntable', onkyo_command_handler("turntable"), 9093]
 ]
 
 
