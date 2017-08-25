@@ -373,76 +373,36 @@ class rest_api_handler(object):
         r = requests.get(self.off_cmd)
         return r.status_code == 200
         
-class onkyo_command_handler(object):
-    def __init__(self, device):
-        self.device = device
-        self.onkyo_command_path = '/home/pi/onkyo-remote/onkyo-iscp/onkyo-iscp'
-        self.onkyo_ip = '10.0.0.29'
-        
-    def on(self):
-        status = 0
-        if self.device == "Playstation":
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "10"])
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "0F"])
-        elif self.device == "X1":
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "01"])
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "0F"])
-        elif self.device == "turntable":
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "SLI", "23"])
-            status += subprocess.call([self.onkyo_command_path, self.onkyo_ip, "MVL", "1E"])
-        return True
+def start_fauxmo(fauxmo_list, debug_mode):
+    global DEBUG
+    DEBUG = debug_mode
+  
+    # Set up our singleton for polling the sockets for data ready
+    p = poller()
 
-    def off(self):
-        status = subprocess.call([self.onkyo_command_path, self.onkyo_ip, "PWR", "00"])
-        return True
+    # Set up our singleton listener for UPnP broadcasts
+    u = upnp_broadcast_responder()
+    u.init_socket()
 
+    # Add the UPnP broadcast listener to the poller so we can respond
+    # when a broadcast is received.
+    p.add(u)
 
-# Each entry is a list with the following elements:
-#
-# name of the virtual switch
-# object with 'on' and 'off' methods
-# port # (optional; may be omitted)
+    # Create our FauxMo virtual switch devices
+    for one_faux in fauxmo_list:
+        if len(one_faux) == 2:
+            # a fixed port wasn't specified, use a dynamic one
+            one_faux.append(0)
+        switch = fauxmo(one_faux[0], u, p, None, one_faux[2], action_handler = one_faux[1])
 
-# NOTE: As of 2015-08-17, the Echo appears to have a hard-coded limit of
-# 16 switches it can control. Only the first 16 elements of the FAUXMOS
-# list will be used.
+    dbg("Entering main loop\n")
 
-FAUXMOS = [
-    ['playstation', onkyo_command_handler("Playstation"), 9091],
-    ['x1', onkyo_command_handler("X1"), 9092],
-    ['turntable', onkyo_command_handler("turntable"), 9093]
-]
-
-
-if len(sys.argv) > 1 and sys.argv[1] == '-d':
-    DEBUG = True
-
-# Set up our singleton for polling the sockets for data ready
-p = poller()
-
-# Set up our singleton listener for UPnP broadcasts
-u = upnp_broadcast_responder()
-u.init_socket()
-
-# Add the UPnP broadcast listener to the poller so we can respond
-# when a broadcast is received.
-p.add(u)
-
-# Create our FauxMo virtual switch devices
-for one_faux in FAUXMOS:
-    if len(one_faux) == 2:
-        # a fixed port wasn't specified, use a dynamic one
-        one_faux.append(0)
-    switch = fauxmo(one_faux[0], u, p, None, one_faux[2], action_handler = one_faux[1])
-
-dbg("Entering main loop\n")
-
-while True:
-    try:
-        # Allow time for a ctrl-c to stop the process
-        p.poll(100)
-        time.sleep(0.1)
-    except Exception, e:
-        dbg(e)
-        break
+    while True:
+        try:
+            # Allow time for a ctrl-c to stop the process
+            p.poll(100)
+            time.sleep(0.1)
+        except Exception, e:
+            dbg(e)
+            break
 
